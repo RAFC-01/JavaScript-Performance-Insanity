@@ -174,8 +174,6 @@ function loadImages(next){
 function clearLight(){
     lightCtx.clearRect(0, 0, lightCanvas.width, lightCanvas.height);
 }
-let circle = {x: 50, y: 150, speed: 0.1};
-let circle2 = {x: 500, y: 300, speed: 0.2};
 
 let numberOfLights = 0;
 
@@ -435,25 +433,6 @@ function drawMap(){
     g_ctx.drawImage(niceOff, 0, 0);
     return calls;
 }
-function drawCircle(){
-    ctx.fillStyle = 'white';
-    ctx.ellipse(circle.x, circle.y, 50, 50, 0, 0, 360, false);
-    ctx.fill();
-
-    circle.x += circle.speed * delta;
-
-    if (circle.x > canvas.width - 50 || circle.x < 50) circle.speed *= -1;
-}
-function drawCircle2(){
-    ctx.fillStyle = 'white';
-    ctx.ellipse(circle2.x, circle2.y, 50, 50, 0, 0, 360, false);
-    ctx.fill();
-
-    circle2.x += circle2.speed * delta;
-
-    if (circle2.x > canvas.width - 50 || circle2.x < 50) circle2.speed *= -1;
-}
-
 function setAlltoRecreate(){
     for (let i = 0; i < mergedSquares.length; i++){
         mergedSquares[i].reCreate = true;
