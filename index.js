@@ -27,6 +27,8 @@ if (!devMode) Menu.setApplicationMenu(null);
 app.whenReady().then(() => {
     // app.commandLine.appendSwitch("--disable-frame-rate-limit");
     // app.commandLine.appendSwitch("--disable-gpu-vsync");
+    // app.commandLine.appendSwitch('--gc-interval --expose_gc', '1');
+    // app.commandLine.appendSwitch('--expose_gc');
     createWindow()
 });
 app.on('will-quit', () => {

@@ -2,8 +2,11 @@ let stats = new Stats();
 stats.showPanel( 0 ); // 0: fps, 1: ms, 2: mb, 3+: custom, -1 disable
 document.body.appendChild( stats.dom );
 const { createNoise2D } = require('simplex-noise');
-const alea = require('alea');
-const prng = alea('12345');
+
+let seed = Math.floor(Math.random() * 1000000000000);
+if (Math.random() > 0.5) seed *= -1;
+
+seed = "kupa";
 
 function smoothstep(edge0, edge1, x) {
     // Scale, bias, and saturate x to 0..1 range
@@ -12,7 +15,7 @@ function smoothstep(edge0, edge1, x) {
     return x * x * (3 - 2 * x);
 }
 
-const noise2D = createNoise2D(() => Math.random());
+const noise2D = createNoise2D(() => seed);
 
 let mapGenerator = {
     lastHeightValue: null,
@@ -45,7 +48,6 @@ const scaledSize = tileSize * scale;
 const mergedSquares = new Map(); // map is faster than object
 const squaresToReCreate = {};
 const mergedLightSquares = new Map();
-const lights = [];
 const staticLights = [];
 
 const pressedKeys = {};
@@ -87,10 +89,8 @@ function moveCamera(){
 
 }
 
-
-const removedTiles = {};
-
 const loadedImages = {};
+const loadedImageDatas = {};
 
 let imageList = ['dirt.png', 'grass.png', 'light.png', 'wood.png', 'stone.png', 'lightBlock.png'];
 
@@ -101,7 +101,7 @@ function randomInt(max){
 const chunkHeightMap = {};
 
 function generateChunk(chunkX, chunkY){
-    let generated = new Uint8Array(100).fill(1);
+    let generated = new Uint8Array(mergeSize.x * mergeSize.y).fill(4);
     
     let randomness = 0.015;
 
@@ -112,7 +112,7 @@ function generateChunk(chunkX, chunkY){
         
         let arr = [];
         
-        for (let i = 0; i < 10; i++){
+        for (let i = 0; i < mergeSize.x; i++){
             let h = Math.floor((noise2D((mapX+i)*randomness, 0)) * 20) + 100;
             arr.push(-h);
         }
@@ -128,11 +128,11 @@ function generateChunk(chunkX, chunkY){
     for (let i = 0; i < generated.length; i++){
         generated[i] = Math.random() > 0.5 ? 1 : 4;
         
-        let y = chunkY * 10 + Math.floor(i / 10);
+        let y = chunkY * mergeSize.x + Math.floor(i / mergeSize.x);
         
         if (chunkX == -0) chunkX = 0;
         
-        let maxHeight = heights[i % 10]; 
+        let maxHeight = heights[i % mergeSize.x]; 
 
         if (y < maxHeight){
             generated[i] = 0;
@@ -154,19 +154,32 @@ const c_IDList = {
     4: {img: 'stone.png'},
     99: {img: 'lightBlock.png', light: true, power: 800, colored: false},
 }
-
+let tileData;
 function loadImages(next){
     const load = (index) => {
         let img = new Image();
         img.src = imageList[index];
         img.onload = () => {
             loadedImages[imageList[index]] = img;
+
+            let canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            let ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(img, 0, 0);
+
+            let imageData = ctx.getImageData(0, 0, img.width, img.height);
+
+            loadedImageDatas[imageList[index]] = imageData.data;
+            tileData = imageData.data;
+            
             if (index+1 == imageList.length && next){
                 next();
                 return;
             } 
             load(index+1);
-                
+            
         }
     }
     load(0);
@@ -186,7 +199,7 @@ function removeStaticLight(light){
         for (let j = -range; j < range+1; j++){
             let chunkX = light.chunkX+i;
             let chunkY = light.chunkY+j;
-            let lightSquare = lookForMergedLightSquare(chunkX + ':' + chunkY);
+            let lightSquare = lookForMergedLightSquare(customHash(chunkX, chunkY));
             if (!lightSquare) continue;
             
             let canvas = lightSquare.canvas;
@@ -341,11 +354,18 @@ function drawMap(){
         y: Math.round(CAMERA.y / scale),
     }
 
-    let niceOff = new OffscreenCanvas(g_canvas.width, g_canvas.height);
-    let niceOffCtx = niceOff.getContext('2d');
-    niceOffCtx.imageSmoothingEnabled = false;
+    // let niceOff = document.createElement('canvas');
+    // niceOff.width = Math.floor(g_canvas.width / scale);
+    // niceOff.height = Math.floor(g_canvas.height / scale);
+    // let niceOffCtx = niceOff.getContext('2d');
+    // niceOffCtx.imageSmoothingEnabled = false;
+    let tempCanvas = document.createElement('canvas');
+    tempCanvas.width = squareNSize.x; 
+    tempCanvas.height = squareNSize.y; 
 
-    // console.log(start, finish);
+    let tempCtx = tempCanvas.getContext('2d');
+    tempCtx.imageSmoothingEnabled = false  
+
     for (let i = start.x; i < finish.x + 1; i++){
         for (let j = start.y; j < finish.y+1; j++){            
             let hash = customHash(i,j);
@@ -355,82 +375,100 @@ function drawMap(){
                 y: squareSize.y * j + CAMERA.y
             }
   
+            let chunkID = i+':'+j;
+            let chunk;
+            if (!loadedChunks[chunkID]){
+                chunk = generateChunk(i, j);
+            }else{
+                chunk = loadedChunks[chunkID].map;
+            }
+
+            let lightSquare = mergedLightSquares[hash];
+            if (lightSquare){
+                calls++;
+                // lightCtx.drawImage(lightSquare.canvas, cameraPos.x, cameraPos.y);
+            }else{
+                // let tempCanvas = document.createElement('canvas');
+                // tempCanvas.width = squareSize.x; 
+                // tempCanvas.height = squareSize.y; 
+
+                // let tempCtx = tempCanvas.getContext('2d');
+                                
+                tempCtx.fillStyle = 'black';
+                tempCtx.fillRect(0, 0, squareSize.x, squareSize.y);
+
+                mergedLightSquares[hash] = {lights: [], canvas: tempCanvas};
+                // tempCanvas = null;
+                // tempCtx = null;
+            } 
+
             let square = mergedSquares[hash];
             if (square && !squaresToReCreate[hash]){
                 // draw merge
                 calls++;
-                niceOffCtx.drawImage(square, cameraPos.x, cameraPos.y, squareSize.x, squareSize.y);
+                g_ctx.drawImage(square, cameraPos.x, cameraPos.y, square.width * scale, square.height * scale);
                 
             }else{
-                let tempCanvas = document.createElement('canvas');
-                tempCanvas.width = squareNSize.x; 
-                tempCanvas.height = squareNSize.y; 
-    
-                let tempCtx = tempCanvas.getContext('2d');
-                tempCtx.imageSmoothingEnabled = false;
                 // recreate
-                let chunkID = i+':'+j;
-                let chunk;
-                if (!loadedChunks[chunkID]){
-                    chunk = generateChunk(i, j);
-                }else{
-                    chunk = loadedChunks[chunkID].map;
-                }
-                for (let y = 0; y < mergeSize.y; y++){
-                    for (let x = 0; x < mergeSize.x; x++){
-                        // let tileX = i * mergeSize.x + x; 
-                        // let tileY = j * mergeSize.y + y; 
-                        
+                // tempCtx.clearRect(0, 0, squareNSize.x, squareNSize.y);     
+                
+                let imageData = new ImageData(squareNSize.x, squareNSize.y);
+                let cData = imageData.data;
+                
+                for (let y = 0; y < mergeSize.y; ++y){
+                    for (let x = 0; x < mergeSize.x; ++x){                        
                         let index = y * mergeSize.x + x; // in this chunk not on map
  
                         let mapID = chunk[index];
 
-                        // drawTile(scaledSize * x, scaledSize * y, scaledSize, tempCtx);
                         let tile = c_IDList[mapID];
                         if (!tile) continue;
-                        let img = loadedImages[tile.img]; 
-                        tempCtx.drawImage(img, tileSize * x, tileSize * y);
+                        // let img = loadedImages[tile.img];
+                        let tileData = loadedImageDatas[tile.img];
+
+                        let pos = {
+                            x: tileSize * x,
+                            y: tileSize * y,
+                        }
+
+                        for (let w = 0; w < tileSize; w++){
+                            for (let h = 0; h < tileSize; h++){
+                                let tIndex = (h * tileSize + w) * 4;
+                                // drawCalls++;
+                                let pData = ( ~~(pos.x + w) + ~~(pos.y + h) * squareNSize.x) * 4;
+                
+                                cData[pData] = tileData[tIndex];
+                                cData[pData + 1] = tileData[tIndex + 1];
+                                cData[pData + 2] = tileData[tIndex + 2];
+                                cData[pData + 3] = tileData[tIndex + 3];
+                            }                
+                        }                                        
+                        
+                        // tempCtx.drawImage(img, tileSize * x, tileSize * y);
                         calls++;
                     }            
                 }
+                tempCtx.putImageData(imageData, 0, 0);
                 loadedChunks[chunkID] = {
                     x: i,
                     y: j,
                     map: chunk
                 }
-                // niceOffCtx.drawImage(tempCanvas, squareNSize.x * i + scaledCamera.x, squareNSize.y * j + scaledCamera.y);
-                niceOffCtx.drawImage(tempCanvas, squareSize.x * i + CAMERA.x, squareSize.y * j + CAMERA.y, squareSize.x, squareSize.y);
+                g_ctx.drawImage(tempCanvas, cameraPos.x, cameraPos.y, tempCanvas.width * scale, tempCanvas.height * scale);
 
                 if (square){
-                    mergedSquares[hash] = tempCanvas; 
+                    createImageBitmap(tempCanvas).then((image) => mergedSquares[hash] = image); 
                     delete squaresToReCreate[hash];
                     continue
                 }
-                mergedSquares[hash] = tempCanvas;
-                tempCanvas = null;
-                tempCtx = null;
+                createImageBitmap(tempCanvas).then((image) => mergedSquares[hash] = image);
+                // tempCanvas = null;
+                // tempCtx = null;
                 // mergedSquares.push({x: i, y: j, canvas: tempCanvas});
-            } 
-            let lightSquare = mergedLightSquares[hash];
-            if (lightSquare){
-                calls++;
-                lightCtx.drawImage(lightSquare.canvas, cameraPos.x, cameraPos.y);
-            }else{
-                let tempCanvas = document.createElement('canvas');
-                tempCanvas.width = squareSize.x; 
-                tempCanvas.height = squareSize.y;                     
-                let tempCtx = tempCanvas.getContext('2d');
-                tempCtx.fillStyle = 'black';
-                tempCtx.fillRect(0, 0, squareSize.x, squareSize.y);
-                // ctx.drawImage(tempCanvas, 0, 0);
-                // mergedLightSquares.push({x: i, y: j, lights: [], canvas: tempCanvas, ctx: tempCtx});
-                mergedLightSquares[hash] = {lights: [], canvas: tempCanvas};
-                tempCanvas = null;
-                tempCtx = null;
             } 
         }
     }
-    g_ctx.drawImage(niceOff, 0, 0);
+    // g_ctx.drawImage(niceOff, 0, 0, niceOff.width * scale, niceOff.height * scale);
     return calls;
 }
 function setAlltoRecreate(){
@@ -505,6 +543,8 @@ function drawFps(){
     g_ctx.fillText(drawnElements+' Drawn Elements', 10, 80);
     g_ctx.fillText(numberOfLights+' Dynamic Lights', 10, 100);
     g_ctx.fillText('Camera x:'+CAMERA.x + ' y: '+CAMERA.y, 10, 120);
+    g_ctx.fillText('seed: '+seed, 10, 140);
+    g_ctx.fillText('squares: '+Object.values(mergedSquares).length, 10, 160);
     g_ctx.closePath();
 }
 
@@ -563,6 +603,53 @@ let fpsCounter = {
     },
     initialized: false,
 }
+// let imageData = new ImageData(g_canvas.width, g_canvas.height);
+let mapSize = {
+    x: Math.floor(g_canvas.width / scaledSize),
+    y: Math.floor(g_canvas.height / scaledSize),
+}
+function testDraw(){
+    if (!tileData) return;
+    let times = 0;
+    var imageData = g_ctx.createImageData(Math.floor(g_canvas.width / scale), Math.floor(g_canvas.height / scale));
+    let data = imageData.data;
+    let width = g_canvas.width / scale;
+
+    for (let i = 0; i < mapSize.x + 1; i++){
+        for (let j = 0; j < mapSize.y + 1; j++){   
+            let pos = {
+                x: tileSize * i,
+                y: tileSize * j
+            }     
+            for (let w = 0; w < tileSize; w++){
+                for (let h = 0; h < tileSize; h++){
+                    let index = (h * tileSize + w) * 4;
+                    // drawCalls++;
+                    let pData = ( ~~(pos.x + w) + ~~(pos.y + h) * width) * 4;
+    
+                    data[pData] = tileData[index];
+                    data[pData + 1] = tileData[index + 1];
+                    data[pData + 2] = tileData[index + 2];
+                    data[pData + 3] = tileData[index + 3];
+                }                
+            }    
+        }             
+    }
+        
+    // console.log(times);
+    
+    let tempCanvas = document.createElement('canvas');
+    let tempCtx = tempCanvas.getContext('2d');
+    
+    tempCanvas.width = g_canvas.width / scale;
+    tempCanvas.height = g_canvas.height / scale;
+
+    tempCtx.putImageData(imageData, 0, 0);
+
+    g_ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width * scale, tempCanvas.height * scale);   
+    tempCanvas = null;
+    tempCtx = null;
+}
 function gameLoop(){
     requestAnimationFrame(gameLoop);
     g_ctx.imageSmoothingEnabled = false;
@@ -573,13 +660,13 @@ function gameLoop(){
     clearScreen();
     drawCalls = drawMap();
     drawLights();
-
+    moveCamera();
+    // testDraw();
     
     // UI layer
     drawMergeLines();
     drawFps();
 
-    moveCamera();
     
     FPS = Math.floor(1 / delta * 1000);
 
