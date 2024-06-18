@@ -6,7 +6,7 @@ const { createNoise2D } = require('simplex-noise');
 let seed = Math.floor(Math.random() * 1000000000000);
 if (Math.random() > 0.5) seed *= -1;
 
-seed = "kupa";
+seed = "test";
 
 function smoothstep(edge0, edge1, x) {
     // Scale, bias, and saturate x to 0..1 range
@@ -66,6 +66,11 @@ let mergeSize = {
 
 let mousePos = {
     x: 0, y: 0
+}
+
+let squareNSize = {
+    x: mergeSize.x * tileSize,
+    y: mergeSize.y * tileSize
 }
 
 const CAMERA = {
@@ -139,7 +144,7 @@ function generateChunk(chunkX, chunkY){
         }else if (y == maxHeight){
             generated[i] = 2;
             
-        }else if (y == maxHeight + 1 || y == maxHeight + 2){
+        }else if (y == maxHeight + 1 || y == maxHeight + 2 || y == maxHeight + 3){
             generated[i] = 1;
         }
         // console.log(y);
@@ -319,6 +324,15 @@ function clearScreen(){
     g_ctx.closePath();
     lightCtx.clearRect(0, 0, lightCanvas.width, lightCanvas.height);
 }
+
+//reusable chunk offscreen canvas
+let chunkCanvas = document.createElement('canvas');
+chunkCanvas.width = squareNSize.x; 
+chunkCanvas.height = squareNSize.y; 
+
+let chunkCtx = chunkCanvas.getContext('2d');
+chunkCtx.imageSmoothingEnabled = false  
+
 function drawMap(){
     let sizeX = Math.floor(g_canvas.width / scaledSize);
     let sizeY = Math.floor(g_canvas.height / scaledSize);
@@ -334,10 +348,6 @@ function drawMap(){
     let squareSize = {
         x: mergeSize.x * scaledSize,
         y: mergeSize.y * scaledSize
-    }
-    let squareNSize = {
-        x: mergeSize.x * tileSize,
-        y: mergeSize.y * tileSize
     }
 
     let start = {
@@ -359,13 +369,6 @@ function drawMap(){
     // niceOff.height = Math.floor(g_canvas.height / scale);
     // let niceOffCtx = niceOff.getContext('2d');
     // niceOffCtx.imageSmoothingEnabled = false;
-    let tempCanvas = document.createElement('canvas');
-    tempCanvas.width = squareNSize.x; 
-    tempCanvas.height = squareNSize.y; 
-
-    let tempCtx = tempCanvas.getContext('2d');
-    tempCtx.imageSmoothingEnabled = false  
-
     for (let i = start.x; i < finish.x + 1; i++){
         for (let j = start.y; j < finish.y+1; j++){            
             let hash = customHash(i,j);
@@ -383,24 +386,24 @@ function drawMap(){
                 chunk = loadedChunks[chunkID].map;
             }
 
-            let lightSquare = mergedLightSquares[hash];
-            if (lightSquare){
-                calls++;
-                // lightCtx.drawImage(lightSquare.canvas, cameraPos.x, cameraPos.y);
-            }else{
-                // let tempCanvas = document.createElement('canvas');
-                // tempCanvas.width = squareSize.x; 
-                // tempCanvas.height = squareSize.y; 
+            // let lightSquare = mergedLightSquares[hash];
+            // if (lightSquare){
+            //     calls++;
+            //     lightCtx.drawImage(lightSquare.canvas, cameraPos.x, cameraPos.y);
+            // }else{
+            //     // let tempCanvas = document.createElement('canvas');
+            //     // tempCanvas.width = squareSize.x; 
+            //     // tempCanvas.height = squareSize.y; 
 
-                // let tempCtx = tempCanvas.getContext('2d');
+            //     // let tempCtx = tempCanvas.getContext('2d');
                                 
-                tempCtx.fillStyle = 'black';
-                tempCtx.fillRect(0, 0, squareSize.x, squareSize.y);
+            //     chunkCtx.fillStyle = 'black';
+            //     chunkCtx.fillRect(0, 0, squareSize.x, squareSize.y);
 
-                mergedLightSquares[hash] = {lights: [], canvas: tempCanvas};
-                // tempCanvas = null;
-                // tempCtx = null;
-            } 
+            //     mergedLightSquares[hash] = {lights: [], canvas: chunkCanvas};
+            //     // tempCanvas = null;
+            //     // tempCtx = null;
+            // } 
 
             let square = mergedSquares[hash];
             if (square && !squaresToReCreate[hash]){
@@ -448,20 +451,20 @@ function drawMap(){
                         calls++;
                     }            
                 }
-                tempCtx.putImageData(imageData, 0, 0);
+                chunkCtx.putImageData(imageData, 0, 0);
                 loadedChunks[chunkID] = {
                     x: i,
                     y: j,
                     map: chunk
                 }
-                g_ctx.drawImage(tempCanvas, cameraPos.x, cameraPos.y, tempCanvas.width * scale, tempCanvas.height * scale);
+                g_ctx.drawImage(chunkCanvas, cameraPos.x, cameraPos.y, chunkCanvas.width * scale, chunkCanvas.height * scale);
 
                 if (square){
-                    createImageBitmap(tempCanvas).then((image) => mergedSquares[hash] = image); 
+                    createImageBitmap(chunkCanvas).then((image) => mergedSquares[hash] = image); 
                     delete squaresToReCreate[hash];
                     continue
                 }
-                createImageBitmap(tempCanvas).then((image) => mergedSquares[hash] = image);
+                createImageBitmap(chunkCanvas).then((image) => mergedSquares[hash] = image);
                 // tempCanvas = null;
                 // tempCtx = null;
                 // mergedSquares.push({x: i, y: j, canvas: tempCanvas});
@@ -513,17 +516,20 @@ function drawMergeLines(){
         y: CAMERA.y % (mergeSize.y * scaledSize),
     }
 
-    for (let i = 0; i < linesY; i++){
-        for (let j = 0; j < linesX; j++){
-            g_ctx.beginPath();
-            g_ctx.strokeStyle = 'blue';
-            g_ctx.strokeRect(1 + lineSpaceX * j + lineOffset.x, 1 + lineSpaceY * i + lineOffset.y, lineSpaceX, lineSpaceY);
-            g_ctx.closePath();
-            merges++;
-        }        
+    for (let i = 0; i < linesX+1; i++){ // vertical
+        g_ctx.strokeStyle = 'blue';
+        g_ctx.moveTo(i * lineSpaceX + lineOffset.x, 0);
+        g_ctx.lineTo(i * lineSpaceX + lineOffset.x, g_canvas.height);
+        g_ctx.lineWidth = 1;
+        g_ctx.stroke();
     }
-}
-function drawChunkPos(){
+    for (let i = 0; i < linesY+1; i++){ // horizontal
+        g_ctx.strokeStyle = 'blue';
+        g_ctx.moveTo(0, i * lineSpaceY + lineOffset.y);
+        g_ctx.lineTo(g_canvas.width, i * lineSpaceY + lineOffset.y);
+        g_ctx.lineWidth = 1;
+        g_ctx.stroke();
+    }
 }
 function drawFps(){
     let sizeX = Math.floor(g_canvas.width / scaledSize) + 1;
@@ -610,7 +616,6 @@ let mapSize = {
 }
 function testDraw(){
     if (!tileData) return;
-    let times = 0;
     var imageData = g_ctx.createImageData(Math.floor(g_canvas.width / scale), Math.floor(g_canvas.height / scale));
     let data = imageData.data;
     let width = g_canvas.width / scale;
@@ -650,6 +655,12 @@ function testDraw(){
     tempCanvas = null;
     tempCtx = null;
 }
+function lightTestDraw(){
+    lightCtx.fillStyle = '#00000060';
+    lightCtx.fillRect(0, 0, lightCanvas.width, lightCanvas.height);
+    g_ctx.drawImage(lightCanvas, 0, 0);
+
+}
 function gameLoop(){
     requestAnimationFrame(gameLoop);
     g_ctx.imageSmoothingEnabled = false;
@@ -660,12 +671,15 @@ function gameLoop(){
     clearScreen();
     drawCalls = drawMap();
     drawLights();
-    moveCamera();
     // testDraw();
+    lightTestDraw();
     
     // UI layer
     drawMergeLines();
     drawFps();
+    
+    moveCamera();
+
 
     
     FPS = Math.floor(1 / delta * 1000);
@@ -692,11 +706,13 @@ function gameLoop(){
 }
 loadImages(() => {
     gameLoop();
-    placeBlock(20, 10, 99);
-    placeBlock(20, 30, 99);
-    placeBlock(10, 20, 99);
-    placeBlock(30, 20, 99);
-    placeBlock(20, 20, 99);
+    setTimeout(() => {
+        placeBlock(20, 10, 99);
+        placeBlock(20, 30, 99);
+        placeBlock(10, 20, 99);
+        placeBlock(30, 20, 99);
+        placeBlock(20, 20, 99);
+    },100);
     // allLights();
 });
 function allLights(){
